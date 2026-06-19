@@ -87,14 +87,18 @@ jobs:
         with:
           terraform_version: 1.15.6
 
+      - name: Initialize platform Terraform
+        working-directory: infra/platform
+        env:
+          TF_VAR_location: francecentral
+        run: terraform init
+
       - name: Create ephemeral platform
         id: platform_apply
         working-directory: infra/platform
         env:
           TF_VAR_location: francecentral
-        run: |
-          terraform init
-          terraform apply -auto-approve
+        run: timeout 20m terraform apply -auto-approve
 
       - name: Read platform outputs
         id: platform
@@ -132,7 +136,7 @@ jobs:
           TF_VAR_deployment_suffix: ${{ steps.platform.outputs.suffix }}
         run: |
           terraform init
-          terraform apply -auto-approve
+          timeout 15m terraform apply -auto-approve
 
       - name: Run functional test
         working-directory: infra/application
@@ -150,7 +154,7 @@ jobs:
           TF_VAR_deployment_suffix: ${{ steps.platform.outputs.suffix }}
         run: |
           terraform init
-          terraform destroy -auto-approve
+          timeout 15m terraform destroy -auto-approve
 
       - name: Destroy platform
         if: always() && steps.platform_apply.outcome != 'skipped'
@@ -159,4 +163,4 @@ jobs:
           TF_VAR_location: francecentral
         run: |
           terraform init
-          terraform destroy -auto-approve
+          timeout 20m terraform destroy -auto-approve
