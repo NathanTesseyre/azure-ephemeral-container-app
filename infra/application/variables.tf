@@ -6,12 +6,17 @@ variable "container_app_environment_id" {
   type = string
 }
 
-variable "pull_identity_id" {
+variable "acr_login_server" {
   type = string
 }
 
-variable "acr_login_server" {
+variable "acr_username" {
   type = string
+}
+
+variable "acr_password" {
+  type      = string
+  sensitive = true
 }
 
 variable "image_tag" {
@@ -25,4 +30,3 @@ variable "deployment_suffix" {
 variable "run_id" {
   type = string
 }
-

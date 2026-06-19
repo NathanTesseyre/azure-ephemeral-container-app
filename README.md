@@ -19,9 +19,7 @@ les routes `/`, `/health` et `/api/info`.
 flowchart LR
     GH["GitHub Actions<br/>OIDC"] --> TF["Terraform"]
     TF --> ACR["Azure Container Registry"]
-    TF --> ID["Managed Identity"]
     TF --> ACA["Azure Container Apps"]
-    ID -->|"AcrPull"| ACR
     ACR -->|"image OCI"| ACA
     TEST["Test fonctionnel HTTP"] --> ACA
     TEST --> DESTROY["terraform destroy"]
@@ -36,7 +34,7 @@ détruites à chaque exécution de déploiement.
 - Infrastructure as Code avec Terraform ;
 - conteneurisation Docker ;
 - Azure Container Apps et Azure Container Registry ;
-- identité managée et rôle `AcrPull` ;
+- registre privé ACR et gestion d'un secret de déploiement éphémère ;
 - fédération OIDC GitHub Actions / Microsoft Entra ID ;
 - tests unitaires, health check et test fonctionnel avec retry ;
 - stratégie de nettoyage avec `if: always()` ;
@@ -67,9 +65,10 @@ variables → Actions → Secrets** :
 - `AZURE_TENANT_ID`
 - `AZURE_SUBSCRIPTION_ID`
 
-L'identité correspondante doit déjà disposer d'une fédération OIDC autorisant ce dépôt
-GitHub et des droits nécessaires sur le groupe de ressources. Le workflow n'utilise
-aucun mot de passe Azure.
+L'identité correspondante doit déjà disposer d'une fédération OIDC pour le sujet
+`repo:NathanTesseyre/azure-ephemeral-container-app:ref:refs/heads/main` et des droits
+nécessaires sur le groupe de ressources. Le workflow n'utilise aucun mot de passe
+Azure persistant.
 
 Le script `scripts/bootstrap-azure.sh` reste fourni comme exemple autonome, mais il
 n'est pas requis pour cet environnement de formation.
@@ -77,8 +76,8 @@ n'est pas requis pour cet environnement de formation.
 ## Déclenchement
 
 - une pull request exécute uniquement la CI locale et la validation Terraform ;
-- un push sur `main` exécute le cycle Azure complet ;
-- `workflow_dispatch` permet de lancer une démonstration manuellement.
+- un push sur `main` exécute la CI sans consommer de ressources Azure ;
+- `workflow_dispatch` lance manuellement le cycle Azure complet.
 
 Le job Azure est protégé par l'environnement GitHub `azure-demo`. Vous pouvez ajouter
 une approbation manuelle dans les règles de cet environnement.

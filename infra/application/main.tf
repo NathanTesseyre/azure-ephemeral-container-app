@@ -4,14 +4,15 @@ resource "azurerm_container_app" "demo" {
   resource_group_name          = var.resource_group_name
   revision_mode                = "Single"
 
-  identity {
-    type         = "UserAssigned"
-    identity_ids = [var.pull_identity_id]
+  registry {
+    server               = var.acr_login_server
+    username             = var.acr_username
+    password_secret_name = "acr-password"
   }
 
-  registry {
-    server   = var.acr_login_server
-    identity = var.pull_identity_id
+  secret {
+    name  = "acr-password"
+    value = var.acr_password
   }
 
   template {
@@ -63,4 +64,3 @@ resource "azurerm_container_app" "demo" {
     ci-run-id  = var.run_id
   }
 }
-

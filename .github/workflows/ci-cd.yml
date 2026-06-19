@@ -56,10 +56,9 @@ jobs:
 
   ephemeral-deployment:
     name: Deploy, test and destroy
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     needs: continuous-integration
     runs-on: ubuntu-latest
-    environment: azure-demo
     permissions:
       contents: read
       id-token: write
@@ -75,6 +74,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Authenticate to Azure with OIDC
+        id: azure_login
         uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -82,11 +82,13 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Set up Terraform
+        id: terraform_setup
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.15.6
 
       - name: Create ephemeral platform
+        id: platform_apply
         working-directory: infra/platform
         env:
           TF_VAR_location: francecentral
@@ -100,8 +102,11 @@ jobs:
         run: |
           echo "acr_name=$(terraform output -raw acr_name)" >> "$GITHUB_OUTPUT"
           echo "acr_login_server=$(terraform output -raw acr_login_server)" >> "$GITHUB_OUTPUT"
+          echo "acr_username=$(terraform output -raw acr_admin_username)" >> "$GITHUB_OUTPUT"
+          acr_password="$(terraform output -raw acr_admin_password)"
+          echo "::add-mask::$acr_password"
+          echo "acr_password=$acr_password" >> "$GITHUB_OUTPUT"
           echo "environment_id=$(terraform output -raw container_app_environment_id)" >> "$GITHUB_OUTPUT"
-          echo "pull_identity_id=$(terraform output -raw pull_identity_id)" >> "$GITHUB_OUTPUT"
           echo "suffix=$(terraform output -raw deployment_suffix)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push image
@@ -116,11 +121,13 @@ jobs:
           docker push "$ACR_LOGIN_SERVER/azure-ephemeral-app:$IMAGE_TAG"
 
       - name: Deploy application
+        id: application_apply
         working-directory: infra/application
         env:
           TF_VAR_container_app_environment_id: ${{ steps.platform.outputs.environment_id }}
-          TF_VAR_pull_identity_id: ${{ steps.platform.outputs.pull_identity_id }}
           TF_VAR_acr_login_server: ${{ steps.platform.outputs.acr_login_server }}
+          TF_VAR_acr_username: ${{ steps.platform.outputs.acr_username }}
+          TF_VAR_acr_password: ${{ steps.platform.outputs.acr_password }}
           TF_VAR_image_tag: ${{ github.sha }}
           TF_VAR_deployment_suffix: ${{ steps.platform.outputs.suffix }}
         run: |
@@ -132,12 +139,13 @@ jobs:
         run: ../../scripts/functional-test.sh "$(terraform output -raw application_url)"
 
       - name: Destroy application
-        if: always()
+        if: always() && steps.application_apply.outcome != 'skipped'
         working-directory: infra/application
         env:
           TF_VAR_container_app_environment_id: ${{ steps.platform.outputs.environment_id }}
-          TF_VAR_pull_identity_id: ${{ steps.platform.outputs.pull_identity_id }}
           TF_VAR_acr_login_server: ${{ steps.platform.outputs.acr_login_server }}
+          TF_VAR_acr_username: ${{ steps.platform.outputs.acr_username }}
+          TF_VAR_acr_password: ${{ steps.platform.outputs.acr_password }}
           TF_VAR_image_tag: ${{ github.sha }}
           TF_VAR_deployment_suffix: ${{ steps.platform.outputs.suffix }}
         run: |
@@ -145,7 +153,7 @@ jobs:
           terraform destroy -auto-approve
 
       - name: Destroy platform
-        if: always()
+        if: always() && steps.platform_apply.outcome != 'skipped'
         working-directory: infra/platform
         env:
           TF_VAR_location: francecentral

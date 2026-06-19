@@ -23,22 +23,8 @@ resource "azurerm_container_registry" "demo" {
   resource_group_name = data.azurerm_resource_group.demo.name
   location            = var.location
   sku                 = "Basic"
-  admin_enabled       = false
+  admin_enabled       = true
   tags                = local.tags
-}
-
-resource "azurerm_user_assigned_identity" "pull" {
-  name                = "id-acr-pull-${local.suffix}"
-  resource_group_name = data.azurerm_resource_group.demo.name
-  location            = var.location
-  tags                = local.tags
-}
-
-resource "azurerm_role_assignment" "acr_pull" {
-  scope                            = azurerm_container_registry.demo.id
-  role_definition_name             = "AcrPull"
-  principal_id                     = azurerm_user_assigned_identity.pull.principal_id
-  skip_service_principal_aad_check = true
 }
 
 resource "azurerm_log_analytics_workspace" "demo" {
@@ -58,4 +44,3 @@ resource "azurerm_container_app_environment" "demo" {
   log_analytics_workspace_id = azurerm_log_analytics_workspace.demo.id
   tags                       = local.tags
 }
-
