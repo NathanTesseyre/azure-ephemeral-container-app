@@ -1,0 +1,14 @@
+{
+  "name": "azure-ephemeral-container-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal Node.js API deployed temporarily to Azure Container Apps.",
+  "scripts": {
+    "start": "node app/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
+

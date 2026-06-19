@@ -1,0 +1,9 @@
+.terraform/
+.tools/
+terraform_*.zip
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+node_modules/
+.env

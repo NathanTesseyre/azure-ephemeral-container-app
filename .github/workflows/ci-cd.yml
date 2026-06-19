@@ -1,0 +1,154 @@
+name: CI/CD - ephemeral Azure deployment
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: azure-demo-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  continuous-integration:
+    name: Test and validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Build container
+        run: docker build --tag azure-ephemeral-app:test .
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive infra
+
+      - name: Validate platform Terraform
+        working-directory: infra/platform
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+      - name: Validate application Terraform
+        working-directory: infra/application
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+  ephemeral-deployment:
+    name: Deploy, test and destroy
+    if: github.event_name != 'pull_request'
+    needs: continuous-integration
+    runs-on: ubuntu-latest
+    environment: azure-demo
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_resource_group_name: ${{ vars.AZURE_RESOURCE_GROUP }}
+      TF_VAR_run_id: ${{ github.run_id }}
+      IMAGE_TAG: ${{ github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Azure with OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+
+      - name: Create ephemeral platform
+        working-directory: infra/platform
+        env:
+          TF_VAR_location: ${{ vars.AZURE_LOCATION }}
+        run: |
+          terraform init
+          terraform apply -auto-approve
+
+      - name: Read platform outputs
+        id: platform
+        working-directory: infra/platform
+        run: |
+          echo "acr_name=$(terraform output -raw acr_name)" >> "$GITHUB_OUTPUT"
+          echo "acr_login_server=$(terraform output -raw acr_login_server)" >> "$GITHUB_OUTPUT"
+          echo "environment_id=$(terraform output -raw container_app_environment_id)" >> "$GITHUB_OUTPUT"
+          echo "pull_identity_id=$(terraform output -raw pull_identity_id)" >> "$GITHUB_OUTPUT"
+          echo "suffix=$(terraform output -raw deployment_suffix)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        env:
+          ACR_NAME: ${{ steps.platform.outputs.acr_name }}
+          ACR_LOGIN_SERVER: ${{ steps.platform.outputs.acr_login_server }}
+        run: |
+          az acr login --name "$ACR_NAME"
+          docker build \
+            --tag "$ACR_LOGIN_SERVER/azure-ephemeral-app:$IMAGE_TAG" \
+            .
+          docker push "$ACR_LOGIN_SERVER/azure-ephemeral-app:$IMAGE_TAG"
+
+      - name: Deploy application
+        working-directory: infra/application
+        env:
+          TF_VAR_container_app_environment_id: ${{ steps.platform.outputs.environment_id }}
+          TF_VAR_pull_identity_id: ${{ steps.platform.outputs.pull_identity_id }}
+          TF_VAR_acr_login_server: ${{ steps.platform.outputs.acr_login_server }}
+          TF_VAR_image_tag: ${{ github.sha }}
+          TF_VAR_deployment_suffix: ${{ steps.platform.outputs.suffix }}
+        run: |
+          terraform init
+          terraform apply -auto-approve
+
+      - name: Run functional test
+        working-directory: infra/application
+        run: ../../scripts/functional-test.sh "$(terraform output -raw application_url)"
+
+      - name: Destroy application
+        if: always()
+        working-directory: infra/application
+        env:
+          TF_VAR_container_app_environment_id: ${{ steps.platform.outputs.environment_id }}
+          TF_VAR_pull_identity_id: ${{ steps.platform.outputs.pull_identity_id }}
+          TF_VAR_acr_login_server: ${{ steps.platform.outputs.acr_login_server }}
+          TF_VAR_image_tag: ${{ github.sha }}
+          TF_VAR_deployment_suffix: ${{ steps.platform.outputs.suffix }}
+        run: |
+          terraform init
+          terraform destroy -auto-approve
+
+      - name: Destroy platform
+        if: always()
+        working-directory: infra/platform
+        env:
+          TF_VAR_location: ${{ vars.AZURE_LOCATION }}
+        run: |
+          terraform init
+          terraform destroy -auto-approve
