@@ -56,42 +56,23 @@ docker run --rm -p 3000:3000 azure-ephemeral-app
 
 ## Configuration Azure et GitHub
 
-Connectez-vous d'abord avec Azure CLI :
+Le workflow réutilise le groupe de ressources existant
+`rg-nathan-tesseyre-prf2026` dans la région `francecentral`. Il ne crée ni groupe de
+ressources, ni application Microsoft Entra.
 
-```bash
-az login
-az account set --subscription "<subscription-id>"
-```
-
-Depuis Git Bash ou WSL, lancez ensuite :
-
-```bash
-./scripts/bootstrap-azure.sh \
-  --github-repository "mon-compte/mon-repo" \
-  --resource-group "rg-github-portfolio" \
-  --location "francecentral"
-```
-
-Le script crée :
-
-- le groupe de ressources permanent ;
-- une application Microsoft Entra et son service principal ;
-- une fédération OIDC limitée à la branche `main` ;
-- un rôle `Contributor` limité au groupe de ressources.
-
-Il affiche les trois valeurs à enregistrer dans **Settings → Secrets and variables →
-Actions → Variables** :
+Les trois valeurs suivantes doivent être enregistrées dans **Settings → Secrets and
+variables → Actions → Secrets** :
 
 - `AZURE_CLIENT_ID`
 - `AZURE_TENANT_ID`
 - `AZURE_SUBSCRIPTION_ID`
 
-Ajoutez également :
+L'identité correspondante doit déjà disposer d'une fédération OIDC autorisant ce dépôt
+GitHub et des droits nécessaires sur le groupe de ressources. Le workflow n'utilise
+aucun mot de passe Azure.
 
-- `AZURE_RESOURCE_GROUP` : par exemple `rg-github-portfolio`
-- `AZURE_LOCATION` : par exemple `francecentral`
-
-Ces valeurs ne sont pas des secrets. Le workflow n'utilise aucun mot de passe Azure.
+Le script `scripts/bootstrap-azure.sh` reste fourni comme exemple autonome, mais il
+n'est pas requis pour cet environnement de formation.
 
 ## Déclenchement
 
@@ -122,4 +103,3 @@ les ressources restantes avant une nouvelle démonstration.
 │   └── functional-test.sh       # test de l'URL déployée
 └── .github/workflows/ci-cd.yml
 ```
-
