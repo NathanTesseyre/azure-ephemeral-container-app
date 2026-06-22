@@ -140,7 +140,7 @@ jobs:
 
       - name: Run functional test
         working-directory: infra/application
-        run: ../../scripts/functional-test.sh "$(terraform output -raw application_url)"
+        run: bash ../../scripts/functional-test.sh "$(terraform output -raw application_url)"
 
       - name: Destroy application
         if: always() && steps.application_apply.outcome != 'skipped'
